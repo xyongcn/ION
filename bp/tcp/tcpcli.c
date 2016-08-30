@@ -2599,6 +2599,96 @@ static void	wakeUpServerThread(struct sockaddr *socketName)
 	}
 }
 
+
+//#define IPV6_ADDR_MC_SCOPE(a) ((a)->s6_addr[1] & 0x0f)        /* nonstandard */
+//	
+//http://bbs.chinaunix.net/forum.php?mod=viewthread&tid=3997619
+static int setupTcpServerSocket(char* ductName, struct sockaddr* socketName)
+{
+	//首先要把ductName拆分成ip与port的字符串
+	//ipv4是x.x.x.x:port
+	//ipv6是[x:x:x:x:x:x]:port
+	char host[50];
+	char service[20];
+	int retVal;
+	if (parseSocketSpecCompat(ductName, host, service) != 0)
+	{
+		writeMemoNote("[?] tcpcli: can't get induct IP address",
+				ductName);
+		return -1;
+	} else {
+		char tmp[200];
+		sprintf(tmp, "ductName:%s, ip:%s, port:%s",ductName, host, service);
+		writeMemo(tmp);
+	}
+
+	if (*service == '\0')
+	{
+		sprintf(service, "%d", BpTcpDefaultPortNbr);
+	}
+	
+	//配置地址信息   
+	struct addrinfo addrCriteria;  
+	memset(&addrCriteria,0,sizeof(addrCriteria));  
+	addrCriteria.ai_family=AF_UNSPEC;  
+	addrCriteria.ai_flags=AI_PASSIVE;  
+	addrCriteria.ai_socktype=SOCK_STREAM;  
+	addrCriteria.ai_protocol=IPPROTO_TCP;  
+	  
+	struct addrinfo *server_addr;  
+	//获取地址信息  
+	retVal=getaddrinfo(host,service ,&addrCriteria,&server_addr);  
+	if(retVal!=0){
+		writeMemoNote("getaddrinfo failed!", NULL);
+		return -1;
+	}
+	int server_sock=-1;  
+	//建立socket  
+	server_sock=socket(server_addr->ai_family,server_addr->ai_socktype,server_addr->ai_protocol);  
+	if(server_sock<0){
+		writeMemoNote("create server_socket failed!", NULL);
+		return -1;
+	}
+	if ( strchr(ductName, '[') )
+	{
+		int sin6_scope_id = parseScopeId(host); //IPV6_ADDR_MC_SCOPE(&((struct sockaddr_in6 *)server_addr->ai_addr)->sin6_addr);
+		if(sin6_scope_id < 0)
+		{
+			writeMemoNote("Unspported ipv6 addr!", NULL);
+			return -1;
+		} else 
+			writeMemoNote("sin6_scope_id", itoa(sin6_scope_id));
+		((struct sockaddr_in6 *) server_addr->ai_addr)->sin6_scope_id = sin6_scope_id;
+	}
+	
+	if(reUseAddress(server_sock))
+	{
+		writeMemoNote("reUseAddress() failed!", NULL);
+		return -1;
+
+	}
+	//绑定端口和监听端口 
+	retVal = bind(server_sock,server_addr->ai_addr,server_addr->ai_addrlen);
+	if(retVal == 0)  
+	{  
+		socklen_t addr_size=sizeof(socketName);  
+		if(getsockname(server_sock,socketName,&addr_size)<0)  
+		{  
+			writeMemoNote("getsockname() failed!", NULL);
+			return -1;
+		}     
+	} else {
+		writeMemoNote("Can't initialize TCP server socket: BIND error", itoa(errno));
+		return -1;
+	}
+	if(0 != listen(server_sock,5))
+	{
+		writeMemoNote("Can't initialize TCP server socket: LISTEN error", NULL);
+		return -1;
+	}
+	return server_sock;
+}
+
 #if defined (ION_LWT)
 int	tcpcli(int a1, int a2, int a3, int a4, int a5,
 		int a6, int a7, int a8, int a9, int a10)
@@ -2611,12 +2701,9 @@ int	main(int argc, char *argv[])
 #endif
 	VInduct			*vduct;
 	PsmAddress		vductElt;
-	unsigned short		portNbr;
-	unsigned int		hostNbr;
+
 	struct sockaddr		socketName;
-	struct sockaddr_in	*inetName;
 	ServerThreadParms	stp;
-	socklen_t		nameLength;
 	Lyst			neighbors;
 	Lyst			backlog;
 	pthread_mutex_t		backlogMutex;
@@ -2636,17 +2723,6 @@ int	main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (parseSocketSpec(ductName, &portNbr, &hostNbr) != 0)
-	{
-		writeMemoNote("[?] tcpcli: can't get induct IP address",
-				ductName);
-		return 1;
-	}
-
-	if (portNbr == 0)
-	{
-		portNbr = BpTcpDefaultPortNbr;
-	}
 
 	findInduct("tcp", ductName, &vduct, &vductElt);
 	if (vductElt == 0)
@@ -2688,35 +2764,13 @@ int	main(int argc, char *argv[])
 	lyst_delete_set(backlog, dropPendingConnection, NULL);
 	pthread_mutex_init(&backlogMutex, NULL);
 
-	/*	Now create the server socket.				*/
-
-	portNbr = htons(portNbr);
-	hostNbr = htonl(hostNbr);
-	memset((char *) &(socketName), 0, sizeof(struct sockaddr));
-	inetName = (struct sockaddr_in *) &(socketName);
-	inetName->sin_family = AF_INET;
-	inetName->sin_port = portNbr;
-	memcpy((char *) &(inetName->sin_addr.s_addr), (char *) &hostNbr, 4);
-	stp.serverSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (stp.serverSocket < 0)
-	{
-		putSysErrmsg("Can't open TCP server socket", NULL);
-		lyst_destroy(backlog);
-		lyst_destroy(neighbors);
-		return 1;
-	}
-
-	nameLength = sizeof(struct sockaddr);
-	if (reUseAddress(stp.serverSocket)
-	|| bind(stp.serverSocket, &socketName, nameLength) < 0
-	|| listen(stp.serverSocket, 5) < 0
-	|| getsockname(stp.serverSocket, &socketName, &nameLength) < 0)
-	{
-		closesocket(stp.serverSocket);
-		lyst_destroy(backlog);
-		lyst_destroy(neighbors);
-		putSysErrmsg("Can't initialize TCP server socket", NULL);
-		return 1;
+	stp.serverSocket = setupTcpServerSocket(ductName, &socketName);
+	if (stp.serverSocket < 0)	
+	{		
+		putSysErrmsg("Can't open TCP server socket", NULL);		
+		lyst_destroy(backlog);		
+		lyst_destroy(neighbors);		
+		return 1;	
 	}
 
 	/*	Set up signal handling: SIGTERM is shutdown signal.	*/
@@ -2771,9 +2825,8 @@ int	main(int argc, char *argv[])
 		char	txt[500];
 
 		isprintf(txt, sizeof(txt),
-				"[i] tcpcli is running [%s:%d].", 
-				inet_ntoa(inetName->sin_addr),
-				ntohs(inetName->sin_port));
+				"[i] tcpcli is running.",
+				NULL);
 		writeMemo(txt);
 	}
 
@@ -2781,14 +2834,22 @@ int	main(int argc, char *argv[])
 
 	/*	Time to shut down.					*/
 
+	writeMemo("1");
+
 	stp.running = 0;
 	wakeUpServerThread(&socketName);
+	writeMemo("2");
 	pthread_join(serverThread, NULL);
+	writeMemo("3");
 	shutDownNeighbors(neighbors);
+	writeMemo("4");
 	snooze(2);		/*	Let clock thread clean up.	*/
+	writeMemo("5");
 	ctp.running = 0;
 	pthread_join(clockThread, NULL);
+	writeMemo("6");
 	closesocket(stp.serverSocket);
+	writeMemo("7");
 	pthread_mutex_destroy(&backlogMutex);
 	lyst_destroy(backlog);
 	lyst_destroy(neighbors);

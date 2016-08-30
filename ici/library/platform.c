@@ -2485,6 +2485,83 @@ int	parseSocketSpec(char *socketSpec, unsigned short *portNbr,
 
 	return 0;
 }
+
+char *strupr(char *str){
+    char *orign=str;
+    for (; *str!='\0'; str++)
+        *str = toupper(*str);
+    return orign;
+}
+
+#define IPV6_ADDR_SCOPE_NODELOCAL	   0x01
+#define IPV6_ADDR_SCOPE_LINKLOCAL	   0x02
+#define IPV6_ADDR_SCOPE_SITELOCAL	   0x05
+#define IPV6_ADDR_SCOPE_ORGLOCAL 	   0x08
+#define IPV6_ADDR_SCOPE_GLOBAL		   0x0e
+
+int parseScopeId(char* hostname)
+{
+	char tmp[100];
+	strcpy(tmp, hostname);
+	writeMemoNote("parseScopeId", tmp);
+	strupr(tmp);
+	writeMemoNote("parseScopeId", tmp);
+	if(strcmp(tmp, "::1") == 0)
+		return IPV6_ADDR_SCOPE_NODELOCAL;
+	if(strncmp(tmp, "FE80", 4) == 0 )
+		return IPV6_ADDR_SCOPE_LINKLOCAL;
+	if(strncmp(tmp, "FEC0", 4) == 0 )
+		return IPV6_ADDR_SCOPE_SITELOCAL;
+	if(strncmp(tmp, "FF00", 4) == 0 || strcmp(tmp, "::") == 0)	
+		return -1;
+
+	return IPV6_ADDR_SCOPE_GLOBAL;
+}
+
+int parseSocketSpecCompat(char* sockSpec, char* hostname, char* portname)
+{
+	char* delimiter;
+	if (sockSpec == NULL || *sockSpec == '\0')
+	{
+		return -1;	
+	}
+
+	delimiter = strstr(sockSpec, "]:");
+	if(delimiter)
+	{
+		//ipv6
+		*delimiter = '\0';
+		strcpy(hostname, sockSpec + 1);//first chr is '['
+		strcpy(portname, delimiter + 2);
+		*delimiter = ']';
+		*(delimiter+1) = ':';
+	} else if((delimiter = strchr(sockSpec, ']'))){
+		//ipv6 without port
+		*delimiter = '\0';
+		strcpy(hostname, sockSpec + 1);//first chr is '['
+		*portname = '\0';
+		*delimiter = ']';
+	} else {
+		//ipv4
+		delimiter = strchr(sockSpec, ':');
+		if (delimiter)
+		{
+			*delimiter = '\0';	/*	Delimit host name.	*/
+			strcpy(portname, delimiter + 1);
+		}
+		strcpy(hostname, sockSpec);
+		if (delimiter == NULL)		/*	No port number.		*/
+		{
+			//sprintf(portname, "%d", BpTcpDefaultPortNbr);
+			*portname = '\0';
+		} else {
+			*delimiter = ':';
+		}
+		
+	}
+	return 0;
+}
+
 #else
 int	parseSocketSpec(char *socketSpec, unsigned short *portNbr,
 		unsigned int *ipAddress)
@@ -3308,62 +3385,87 @@ void	itcp_handleConnectionLoss()
 }
 #endif
 
-int	itcp_connect(char *socketSpec, unsigned short defaultPort, int *sock)
-{
-	unsigned short		portNbr;
-	unsigned int		hostNbr;
-	struct sockaddr		socketName;
-	struct sockaddr_in	*inetName;
-	char			dottedString[16];
-	char			socketTag[32];
-
-	CHKERR(socketSpec);
-	CHKERR(sock);
-	*sock = -1;		/*	Default value.			*/
-	if (*socketSpec == '\0')
-	{
-		return 0;	/*	Don't try to connect.		*/
+//建立客户端socket  
+static int SetupTCPClientSocket(char *host, char* service, int isIpv6)  
+{  
+    //配置想要的地址信息  
+    struct addrinfo addrCriteria;  
+    memset(&addrCriteria,0,sizeof(addrCriteria));  
+    addrCriteria.ai_family=AF_UNSPEC;  
+    addrCriteria.ai_socktype=SOCK_STREAM;  
+    addrCriteria.ai_protocol=IPPROTO_TCP;  
+      
+    struct addrinfo *server_addr;  
+    //获取地址信息  
+    int retVal=getaddrinfo(host,service,&addrCriteria,&server_addr);  
+	if(retVal!=0)
+	{		
+		writeMemoNote("getaddrinfo failed!", NULL);		
+		return -1;	
 	}
 
-	/*	Construct socket name.					*/
+    int sock=-1;  
+    struct addrinfo *addr=server_addr;  
 
-	parseSocketSpec(socketSpec, &portNbr, &hostNbr);
-	if (hostNbr == 0)
+    //建立socket  
+    sock=socket(addr->ai_family,addr->ai_socktype,addr->ai_protocol);  
+    if(sock<0){		
+		writeMemoNote("create client_socket failed!", NULL);		
+		return -1;	
+	} 
+	if(isIpv6)
+	{
+		int sin6_scope_id = parseScopeId(host); //IPV6_ADDR_MC_SCOPE(&((struct sockaddr_in6 *)server_addr->ai_addr)->sin6_addr);
+		if(sin6_scope_id < 0)
+		{
+			writeMemoNote("Unspported ipv6 addr!", NULL);
+			return -1;
+		} else 
+			writeMemoNote("sin6_scope_id", itoa(sin6_scope_id));
+		((struct sockaddr_in6 *) server_addr->ai_addr)->sin6_scope_id = sin6_scope_id;
+	}		
+    if(connect(sock,addr->ai_addr,addr->ai_addrlen)!=0){		
+		putSysErrmsg("Can't connect to TCP socket", NULL);
+		closesocket(sock);
+		return 0;	
+	} 
+	
+
+    freeaddrinfo(server_addr);  
+    return sock;  
+}  
+
+
+int	itcp_connect(char *socketSpec, unsigned short defaultPort, int *sock)
+{
+
+	char host[50];	
+	char service[20];
+	int isIpv6 = 0;
+	
+	if (parseSocketSpecCompat(socketSpec, host, service) < 0)
 	{
 		putErrmsg("Can't get IP address for host.", socketSpec);
 		return 0;
 	}
-
-	if (portNbr == 0)
+	if (*service == '\0')
 	{
-		portNbr = defaultPort;
+		sprintf(service, "%d", defaultPort);
 	}
 
-	printDottedString(hostNbr, dottedString);
-	isprintf(socketTag, sizeof socketTag, "%s:%hu", dottedString, portNbr);
-	hostNbr = htonl(hostNbr);
-	portNbr = htons(portNbr);
-	memset((char *) &socketName, 0, sizeof socketName);
-	inetName = (struct sockaddr_in *) &socketName;
-	inetName->sin_family = AF_INET;
-	inetName->sin_port = portNbr;
-	memcpy((char *) &(inetName->sin_addr.s_addr), (char *) &hostNbr, 4);
-	*sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	
+	if ( strchr(socketSpec, '[' )) isIpv6 = 1;
+	*sock = SetupTCPClientSocket(host, service, isIpv6);
 	if (*sock < 0)
 	{
-		putSysErrmsg("Can't open TCP socket", socketTag);
+		putSysErrmsg("Can't open TCP socket", NULL);
 		return -1;
-	}
-
-	if (connect(*sock, &socketName, sizeof(struct sockaddr)) < 0)
-	{
-		putSysErrmsg("Can't connect to TCP socket", socketTag);
-		closesocket(*sock);
+	} else if (*sock == 0) {
 		*sock = -1;
 		return 0;
 	}
 
-	writeMemoNote("[i] Connected to TCP socket", socketTag);
+	writeMemoNote("[i] Connected to TCP socket", NULL);
 	return 1;	/*	Connected to remote socket.		*/
 }
 
