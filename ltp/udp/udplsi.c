@@ -32,7 +32,7 @@ static void	*handleDatagrams(void *parm)
 	char			*procName = "udplsi";
 	char			*buffer;
 	int			segmentLength;
-	struct sockaddr_in	fromAddr;
+	struct sockaddr_storage	fromAddr;
 	socklen_t		fromSize;
 
 	snooze(1);	/*	Let main thread become interruptable.	*/
@@ -100,15 +100,20 @@ int	main(int argc, char *argv[])
 	char	*endpointSpec = (argc > 1 ? argv[1] : NULL);
 #endif
 	LtpVdb			*vdb;
-	unsigned short		portNbr = 0;
-	unsigned int		ipAddress = INADDR_ANY;
+//	unsigned short		portNbr = 0;
+//	unsigned int		ipAddress = INADDR_ANY;
+	char ipAddress[50];
+	char portNbr[20];
+	int retVal;
 	struct sockaddr		socketName;
-	struct sockaddr_in	*inetName;
+//	struct sockaddr_in	*inetName;
 	ReceiverThreadParms	rtp;
 	socklen_t		nameLength;
 	pthread_t		receiverThread;
 	int			fd;
 	char			quit = '\0';
+	*ipAddress = '\0';
+	*portNbr = '\0';
 
 	/*	Note that ltpadmin must be run before the first
 	 *	invocation of ltplsi, to initialize the LTP database
@@ -131,40 +136,73 @@ int	main(int argc, char *argv[])
 
 	if (endpointSpec)
 	{
-		if(parseSocketSpec(endpointSpec, &portNbr, &ipAddress) != 0)
+		if(parseSocketSpecCompat(endpointSpec, ipAddress, portNbr) != 0)
 		{
 			putErrmsg("Can't get IP/port for endpointSpec.",
 					endpointSpec);
 			return -1;
+		} else {
+			char tmp[200];
+			sprintf(tmp, "LSI ductName:%s, ip:%s, port:%s",endpointSpec, ipAddress, portNbr);
+			writeMemo(tmp);
 		}
+	} else {
+		writeMemo("LSI: endpointSpec is NULL");
 	}
 
-	if (portNbr == 0)
+	if (*portNbr == '\0')
 	{
-		portNbr = LtpUdpDefaultPortNbr;
+		sprintf(portNbr, "%d", LtpUdpDefaultPortNbr);
 	}
 
-	portNbr = htons(portNbr);
-	ipAddress = htonl(ipAddress);
-	memset((char *) &socketName, 0, sizeof socketName);
-	inetName = (struct sockaddr_in *) &socketName;
-	inetName->sin_family = AF_INET;
-	inetName->sin_port = portNbr;
-	memcpy((char *) &(inetName->sin_addr.s_addr), (char *) &ipAddress, 4);
-	rtp.linkSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	//配置地址信息   
+	struct addrinfo addrCriteria;  
+	memset(&addrCriteria,0,sizeof(addrCriteria));  
+	addrCriteria.ai_family=AF_UNSPEC;  
+	addrCriteria.ai_flags=AI_PASSIVE;  
+	addrCriteria.ai_socktype=SOCK_DGRAM;  
+	addrCriteria.ai_protocol=IPPROTO_UDP;  
+	  
+	struct addrinfo *server_addrinfo;  
+	//获取地址信息  
+	retVal=getaddrinfo(ipAddress, portNbr,&addrCriteria,&server_addrinfo);  
+	if(retVal!=0){
+		writeMemoNote("***********LSI: getaddrinfo failed!***********", NULL);
+		return -1;
+	}
+	
+	/*	Now create the socket that will be used for sending
+	 *	datagrams to the peer LTP engine and receiving
+	 *	datagrams from the peer LTP engine.			*/
+	//建立socket  
+	rtp.linkSocket = socket(server_addrinfo->ai_family,server_addrinfo->ai_socktype,server_addrinfo->ai_protocol);  
 	if (rtp.linkSocket < 0)
 	{
 		putSysErrmsg("LSI can't open UDP socket", NULL);
-		return -1;
+		return 1;
 	}
+
+	if ( endpointSpec && strchr(endpointSpec, '[') )
+	{
+		int sin6_scope_id = parseScopeId(ipAddress); //IPV6_ADDR_MC_SCOPE(&((struct sockaddr_in6 *)server_addr->ai_addr)->sin6_addr);
+		if(sin6_scope_id < 0)
+		{
+			writeMemoNote("Unspported ipv6 addr!", NULL);
+			return -1;
+		} else 
+			writeMemoNote("sin6_scope_id", itoa(sin6_scope_id));
+		((struct sockaddr_in6 *) server_addrinfo->ai_addr)->sin6_scope_id = sin6_scope_id;
+	}
+
 
 	nameLength = sizeof(struct sockaddr);
 	if (reUseAddress(rtp.linkSocket)
-	|| bind(rtp.linkSocket, &socketName, nameLength) < 0
+	|| bind(rtp.linkSocket,server_addrinfo->ai_addr,server_addrinfo->ai_addrlen) < 0 
 	|| getsockname(rtp.linkSocket, &socketName, &nameLength) < 0)
 	{
 		closesocket(rtp.linkSocket);
 		putSysErrmsg("Can't initialize socket", NULL);
+		nameLength = 0;
 		return 1;
 	}
 
@@ -190,8 +228,8 @@ int	main(int argc, char *argv[])
 		char	txt[500];
 
 		isprintf(txt, sizeof(txt),
-			"[i] udplsi is running, spec=[%s:%d].", 
-			inet_ntoa(inetName->sin_addr), ntohs(portNbr));
+			"[i] udplsi is running, spec=[%s:%s].", 
+			ipAddress, portNbr);
 		writeMemo(txt);
 	}
 
@@ -204,7 +242,7 @@ int	main(int argc, char *argv[])
 	/*	Wake up the receiver thread by sending it a 1-byte
 	 *	datagram.						*/
 
-	fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	fd = socket(server_addrinfo->ai_family,server_addrinfo->ai_socktype,server_addrinfo->ai_protocol);  
 	if (fd >= 0)
 	{
 		isendto(fd, &quit, 1, 0, &socketName, sizeof(struct sockaddr));
