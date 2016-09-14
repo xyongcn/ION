@@ -78,37 +78,56 @@ static void	*handleDatagrams(void *parm)
 
 	/*	Can now start receiving bundles.  On failure, take
 	 *	down the LSO.						*/
+	fd_set rfds;
+	struct timeval time_out;
+	time_out.tv_sec=1;
+	time_out.tv_usec=0;
+	int maxfd = rtp->linkSocket;
+	int ret;
 
 	iblock(SIGTERM);
 	while (rtp->running)
 	{	
-		fromSize = sizeof fromAddr;
-		segmentLength = irecvfrom(rtp->linkSocket, buffer, UDPLSA_BUFSZ,
-				0, (struct sockaddr *) &fromAddr, &fromSize);
-		switch (segmentLength)
-		{
-		case -1:
-			putSysErrmsg("Can't acquire segment", NULL);
-			shutDownLso();
+		FD_ZERO(&rfds);
+		FD_SET(rtp->linkSocket, &rfds);
+		ret = select(maxfd+1, &rfds, NULL, NULL, &time_out);
+		if(ret < 0){
+			perror("*********select return SOCKET_ERROR**********\n");
+			exit(0);
+		} else if(ret == 0){
+//			pthread_testcancel();
+		} else {
+			if (FD_ISSET(rtp->linkSocket, &rfds)){
+				fromSize = sizeof fromAddr;
+				segmentLength = irecvfrom(rtp->linkSocket, buffer, UDPLSA_BUFSZ,
+						0, (struct sockaddr *) &fromAddr, &fromSize);
+				switch (segmentLength)
+				{
+				case -1:
+					putSysErrmsg("Can't acquire segment", NULL);
+					shutDownLso();
 
-			/*	Intentional fall-through to next case.	*/
+					/*	Intentional fall-through to next case.	*/
 
-		case 1:				/*	Normal stop.	*/
-			rtp->running = 0;
-			continue;
+				case 1:				/*	Normal stop.	*/
+					rtp->running = 0;
+					writeMemo("[i] udplsi receives end signal.");
+					continue;
+				}
+
+				if (ltpHandleInboundSegment(buffer, segmentLength) < 0)
+				{
+					putErrmsg("Can't handle inbound segment.", NULL);
+					shutDownLso();
+					rtp->running = 0;
+					continue;
+				}
+
+				/*	Make sure other tasks have a chance to run.	*/
+
+				sm_TaskYield();
+			}
 		}
-
-		if (ltpHandleInboundSegment(buffer, segmentLength) < 0)
-		{
-			putErrmsg("Can't handle inbound segment.", NULL);
-			shutDownLso();
-			rtp->running = 0;
-			continue;
-		}
-
-		/*	Make sure other tasks have a chance to run.	*/
-
-		sm_TaskYield();
 	}
 
 	writeErrmsgMemos();
@@ -177,8 +196,8 @@ int	main(int argc, char *argv[])
 	Sdr			sdr;
 	LtpVspan		*vspan;
 	PsmAddress		vspanElt;
-	struct sockaddr 	bindSockName;
-	socklen_t		nameLength;
+//	struct sockaddr 	bindSockName;
+//	socklen_t		nameLength;
 	ReceiverThreadParms	rtp;
 	pthread_t		receiverThread;
 	int			segmentLength;
@@ -187,8 +206,8 @@ int	main(int argc, char *argv[])
 	float			sleepSecPerBit = 0;
 	float			sleep_secs;
 	unsigned int		usecs;
-	int			fd;
-	char			quit = '\0';
+//	int			fd;
+//	char			quit = '\0';
 
 	if( txbps != 0 && remoteEngineId == 0 )
 	{
@@ -245,7 +264,7 @@ int	main(int argc, char *argv[])
 		return -1;
 	} else {
 		char tmp[200];
-		sprintf(tmp, "LSO ductName:%s, ip:%s, port:%s",endpointSpec, ipAddress, portNbr);
+		sprintf(tmp, "[i] LSO ductName:%s, ip:%s, port:%s",endpointSpec, ipAddress, portNbr);
 		writeMemo(tmp);
 	}
 	if (*portNbr == '\0')
@@ -307,9 +326,9 @@ int	main(int argc, char *argv[])
 	/*	Bind the socket to own socket address so that we can
 	 *	send a 1-byte datagram to that address to shut down
 	 *	the datagram handling thread.				*/
-	nameLength = sizeof(struct sockaddr);
-	if ( bind(rtp.linkSocket,own_addrinfo->ai_addr,own_addrinfo->ai_addrlen) < 0
-		|| getsockname(rtp.linkSocket, &bindSockName, &nameLength) < 0)
+//	nameLength = sizeof(struct sockaddr);
+	if ( bind(rtp.linkSocket,own_addrinfo->ai_addr,own_addrinfo->ai_addrlen) < 0 )
+		//|| getsockname(rtp.linkSocket, &bindSockName, &nameLength) < 0)
 	{
 		closesocket(rtp.linkSocket);
 		putSysErrmsg("LSO can't bind UDP socket", NULL);
@@ -397,7 +416,7 @@ int	main(int argc, char *argv[])
 	}
 
 	/*	Create one-use socket for the closing quit byte.	*/
-	fd = socket(own_addrinfo->ai_family,own_addrinfo->ai_socktype,own_addrinfo->ai_protocol);  
+/*	fd = socket(own_addrinfo->ai_family,own_addrinfo->ai_socktype,own_addrinfo->ai_protocol);  
 	if (fd < 0)
 	{
 		putSysErrmsg("udplso closing phase: LSO can't open UDP socket", NULL);
@@ -405,10 +424,14 @@ int	main(int argc, char *argv[])
 	}
 	if (fd >= 0)
 	{
+		writeMemo("LSO:sending end packet .");
 		isendto(fd, &quit, 1, 0, &bindSockName, sizeof(struct sockaddr));
 		closesocket(fd);
 	}
-	
+*/
+	rtp.running = 0;
+
+//	pthread_cancel(receiverThread);
 	pthread_join(receiverThread, NULL);
 	closesocket(rtp.linkSocket);
 	writeErrmsgMemos();

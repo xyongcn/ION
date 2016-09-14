@@ -46,36 +46,55 @@ static void	*handleDatagrams(void *parm)
 
 	/*	Can now start receiving bundles.  On failure, take
 	 *	down the LSI.						*/
+	fd_set rfds;
+	struct timeval time_out;
+	time_out.tv_sec=1;
+	time_out.tv_usec=0;
+	int maxfd = rtp->linkSocket;
+	int ret;
 
 	while (rtp->running)
 	{	
-		fromSize = sizeof fromAddr;
-		segmentLength = irecvfrom(rtp->linkSocket, buffer, UDPLSA_BUFSZ,
-				0, (struct sockaddr *) &fromAddr, &fromSize);
-		switch (segmentLength)
-		{
-		case -1:
-			putSysErrmsg("Can't acquire segment", NULL);
-			ionKillMainThread(procName);
+		FD_ZERO(&rfds);
+		FD_SET(rtp->linkSocket, &rfds);
+		ret = select(maxfd+1, &rfds, NULL, NULL, &time_out);
+		if(ret < 0){
+			perror("*********select return SOCKET_ERROR**********\n");
+			exit(0);
+		} else if(ret == 0){
+//			pthread_testcancel();
+		} else {
+			if (FD_ISSET(rtp->linkSocket, &rfds)){
+				fromSize = sizeof fromAddr;
+				segmentLength = irecvfrom(rtp->linkSocket, buffer, UDPLSA_BUFSZ,
+						0, (struct sockaddr *) &fromAddr, &fromSize);
+				switch (segmentLength)
+				{
+				case -1:
+					putSysErrmsg("Can't acquire segment", NULL);
+					ionKillMainThread(procName);
+				
+					/*	Intentional fall-through to next case.	*/
+				
+				case 1: 			/*	Normal stop.	*/
+					rtp->running = 0;
+					writeMemo("[i] udplsi receives end signal.");
+					continue;
+				}
 
-			/*	Intentional fall-through to next case.	*/
+				if (ltpHandleInboundSegment(buffer, segmentLength) < 0)
+				{
+					putErrmsg("Can't handle inbound segment.", NULL);
+					ionKillMainThread(procName);
+					rtp->running = 0;
+					continue;
+				}
 
-		case 1:				/*	Normal stop.	*/
-			rtp->running = 0;
-			continue;
+				/*	Make sure other tasks have a chance to run.	*/
+
+				sm_TaskYield();
+			}
 		}
-
-		if (ltpHandleInboundSegment(buffer, segmentLength) < 0)
-		{
-			putErrmsg("Can't handle inbound segment.", NULL);
-			ionKillMainThread(procName);
-			rtp->running = 0;
-			continue;
-		}
-
-		/*	Make sure other tasks have a chance to run.	*/
-
-		sm_TaskYield();
 	}
 
 	writeErrmsgMemos();
@@ -105,13 +124,13 @@ int	main(int argc, char *argv[])
 	char ipAddress[50];
 	char portNbr[20];
 	int retVal;
-	struct sockaddr		socketName;
+//	struct sockaddr		socketName;
 //	struct sockaddr_in	*inetName;
 	ReceiverThreadParms	rtp;
-	socklen_t		nameLength;
+//	socklen_t		nameLength;
 	pthread_t		receiverThread;
-	int			fd;
-	char			quit = '\0';
+//	int			fd;
+//	char			quit = '\0';
 	*ipAddress = '\0';
 	*portNbr = '\0';
 
@@ -143,7 +162,7 @@ int	main(int argc, char *argv[])
 			return -1;
 		} else {
 			char tmp[200];
-			sprintf(tmp, "LSI ductName:%s, ip:%s, port:%s",endpointSpec, ipAddress, portNbr);
+			sprintf(tmp, "[i] LSI ductName:%s, ip:%s, port:%s",endpointSpec, ipAddress, portNbr);
 			writeMemo(tmp);
 		}
 	} else {
@@ -195,14 +214,13 @@ int	main(int argc, char *argv[])
 	}
 
 
-	nameLength = sizeof(struct sockaddr);
+//	nameLength = sizeof(struct sockaddr);
 	if (reUseAddress(rtp.linkSocket)
-	|| bind(rtp.linkSocket,server_addrinfo->ai_addr,server_addrinfo->ai_addrlen) < 0 
-	|| getsockname(rtp.linkSocket, &socketName, &nameLength) < 0)
+	|| bind(rtp.linkSocket,server_addrinfo->ai_addr,server_addrinfo->ai_addrlen) < 0 )
+	//|| getsockname(rtp.linkSocket, &socketName, &nameLength) < 0)
 	{
 		closesocket(rtp.linkSocket);
 		putSysErrmsg("Can't initialize socket", NULL);
-		nameLength = 0;
 		return 1;
 	}
 
@@ -232,23 +250,27 @@ int	main(int argc, char *argv[])
 			ipAddress, portNbr);
 		writeMemo(txt);
 	}
-
 	ionPauseMainThread(-1);
 
 	/*	Time to shut down.					*/
-
 	rtp.running = 0;
 
 	/*	Wake up the receiver thread by sending it a 1-byte
 	 *	datagram.						*/
 
-	fd = socket(server_addrinfo->ai_family,server_addrinfo->ai_socktype,server_addrinfo->ai_protocol);  
+/*	fd = socket(server_addrinfo->ai_family,server_addrinfo->ai_socktype,server_addrinfo->ai_protocol);  
 	if (fd >= 0)
 	{
+		writeMemo("LSI:sending end packet .");
 		isendto(fd, &quit, 1, 0, &socketName, sizeof(struct sockaddr));
 		closesocket(fd);
+  	} else	{
+		putSysErrmsg("LSI can't open UDP socket for closing procedure!!", NULL);
+		return 1;
 	}
+*/
 
+//	pthread_cancel(receiverThread);
 	pthread_join(receiverThread, NULL);
 	closesocket(rtp.linkSocket);
 	writeErrmsgMemos();
