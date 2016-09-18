@@ -108,7 +108,7 @@ ltpadmin配置部分开始
 第1个参数：1，初始化命令  
 第2个参数：32，LTP传输会话的最大数目
 
-**a span 1 32 32 1400 10000 1 'udplso localhost:1113'**
+**a span 1 32 32 1400 10000 1 'udplso localhost:1113'**  
 第1个参数：a，添加命令，span表示ltp接收  
 第2个参数：1，远端节点的编号  
 第3个参数：32，LTP传输会话的最大数目  
@@ -118,7 +118,7 @@ ltpadmin配置部分开始
 第7个参数：1，聚合时间限制，在聚合开始后后1秒钟进行传输，无论是否到达门限值  
 第8个参数：'udplso localhost:1113'，远端节点连接协议和地址信息  
 
-**s 'udplsi localhost:1113'**
+**s 'udplsi localhost:1113'**  
 第1个参数：s，启动本地ltp服务  
 第2个参数：'udplsi localhost:1113'，远端节点连接协议和地址信息  
 
