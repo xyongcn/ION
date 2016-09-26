@@ -25,6 +25,7 @@ ionstart -I 配置文件
     * 参数说明：
        * NODE1_IP ~ NODE9_IP：代表机器ip地址，只用ipv6测试过。默认为2000::1~2000::9
        * CONFIG1 ~ CONFIG9：代表9个点的配置文件对应的名字
+       * BPCONFIG：代表bpadmin的输入参数，内容为“w 1”
        * CONFIG_LOC：代表远程机器上配置文件需要存放的位置
        * USERNAME：远程机器的访问用户名
        * PASSWORD_FILE：存放远程机器访问用户名的密码（明文），确保这个文件存在。
@@ -33,6 +34,16 @@ ionstart -I 配置文件
        1. 将配置文件传到对应机器上；
        1. 停止所有机器上的ion服务；
        1. 按照新的配置文件启动所有机器上的ion服务。
+       1. 将当前窗口拆分成9等份，并在2~8机器上阻塞读取bp状态，机器与窗格对应关系为：
+       
+          ```
+             node1---node4---node7
+               |       |       |
+             node2---node5---node8
+               |       |       |
+             node3---node6---node9  
+          ```
+          
  1. config_files/ipv6-9nodes/tmux.sh：
     * 该脚本作用是将一个shell拆分成9等分。
     * 运行前注意安装tmux：
