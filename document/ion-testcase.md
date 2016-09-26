@@ -33,4 +33,8 @@ ionstart -I 配置文件
        1. 将配置文件传到对应机器上；
        1. 停止所有机器上的ion服务；
        1. 按照新的配置文件启动所有机器上的ion服务。
- 
+  1. config_files/ipv6-9nodes/tmux.sh：
+    * 该脚本作用是将一个shell拆分成9等分。
+    * 运行前注意安装tmux：
+      * ubuntu: sudo apt-get install tmux
+      * centos: sudo yum install tux
