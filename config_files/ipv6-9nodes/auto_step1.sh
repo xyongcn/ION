@@ -10,6 +10,8 @@ NODE7_IP="2000::7"
 NODE8_IP="2000::8"
 NODE9_IP="2000::9"
 
+BPCONFIG="bpconfig.conf"
+
 CONFIG1="1.txt"
 CONFIG2="2.txt"
 CONFIG3="3.txt"
@@ -44,6 +46,16 @@ sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${CONFIG6} ${USERNAM
 sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${CONFIG7} ${USERNAME}@[${NODE7_IP}]:${CONFIG_LOC}
 sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${CONFIG8} ${USERNAME}@[${NODE8_IP}]:${CONFIG_LOC}
 sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${CONFIG9} ${USERNAME}@[${NODE9_IP}]:${CONFIG_LOC}
+
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE1_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE2_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE3_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE4_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE5_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE6_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE7_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE8_IP}]:${CONFIG_LOC}
+sshpass -f ${PASSWORD_FILE} scp -o StrictHostKeyChecking=no ${BPCONFIG} ${USERNAME}@[${NODE9_IP}]:${CONFIG_LOC}
 
 echo "Stopping IONs if they are already opened..."
 sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no -q ${USERNAME}@${NODE1_IP} "ionstop > ${CONFIG_LOC}/scriptlog_exit &"
@@ -87,14 +99,6 @@ sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no -q ${USERNAME}@${NOD
 echo "Starting ION9"
 sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no -q ${USERNAME}@${NODE9_IP} "ionstart -I ${CONFIG_LOC}/${CONFIG9} > ${CONFIG_LOC}/scriptlog"
 
-echo "Waiting ionstart 10.."
-sleep 1
-echo "Waiting ionstart 9.."
-sleep 1
-echo "Waiting ionstart 8.."
-sleep 1
-echo "Waiting ionstart 7.."
-sleep 1
 echo "Waiting ionstart 6.."
 sleep 1
 echo "Waiting ionstart 5.."
@@ -107,3 +111,51 @@ echo "Waiting ionstart 2.."
 sleep 1
 echo "Waiting ionstart 1.."
 sleep 1
+
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE1_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE2_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE3_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE4_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE5_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE6_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE7_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE8_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE9_IP} "bpadmin ${CONFIG_LOC}/${BPCONFIG}"
+
+# ´°¸ñ±àºÅ0~9µÄË³ÐòÊÇ
+# 0  3  6 
+# 1  4  7
+# 2  5  8
+tmux kill-session
+tmux kill-session
+
+tmux new-session -d -s 9nodes
+tmux split-window -h -p 67
+tmux split-window -h
+tmux select-pane -t %0
+tmux split-window -v -p 67
+tmux split-window -v
+tmux select-pane -t %1
+tmux split-window -v -p 67
+tmux split-window -v
+tmux select-pane -t %2
+tmux split-window -v -p 67
+tmux split-window -v
+
+tmux select-pane -t 1
+tmux send-keys "sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE2_IP} \"tail -f ${CONFIG_LOC}/scriptlog\"" C-m
+tmux select-pane -t 2
+tmux send-keys "sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE3_IP} \"tail -f ${CONFIG_LOC}/scriptlog\"" C-m
+tmux select-pane -t 3
+tmux send-keys "sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE4_IP} \"tail -f ${CONFIG_LOC}/scriptlog\"" C-m
+tmux select-pane -t 4
+tmux send-keys "sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE5_IP} \"tail -f ${CONFIG_LOC}/scriptlog\"" C-m
+tmux select-pane -t 5
+tmux send-keys "sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE6_IP} \"tail -f ${CONFIG_LOC}/scriptlog\"" C-m
+tmux select-pane -t 6
+tmux send-keys "sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE7_IP} \"tail -f ${CONFIG_LOC}/scriptlog\"" C-m
+tmux select-pane -t 7
+tmux send-keys "sshpass -f ${PASSWORD_FILE} ssh -o StrictHostKeyChecking=no ${USERNAME}@${NODE8_IP} \"tail -f ${CONFIG_LOC}/scriptlog\"" C-m
+
+tmux select-pane -t 0
+tmux attach
