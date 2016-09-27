@@ -68,6 +68,7 @@ static void	*handleDatagrams(void *parm)
 				fromSize = sizeof fromAddr;
 				segmentLength = irecvfrom(rtp->linkSocket, buffer, UDPLSA_BUFSZ,
 						0, (struct sockaddr *) &fromAddr, &fromSize);
+				//writeMemo("[i] udplsi received a packet!.");
 				switch (segmentLength)
 				{
 				case -1:
@@ -118,7 +119,7 @@ int	main(int argc, char *argv[])
 {
 	char	*endpointSpec = (argc > 1 ? argv[1] : NULL);
 #endif
-	LtpVdb			*vdb;
+//	LtpVdb			*vdb;
 //	unsigned short		portNbr = 0;
 //	unsigned int		ipAddress = INADDR_ANY;
 	char ipAddress[50];
@@ -144,12 +145,12 @@ int	main(int argc, char *argv[])
 		return 1;
 	}
 
-	vdb = getLtpVdb();
-	if (vdb->lsiPid != ERROR && vdb->lsiPid != sm_TaskIdSelf())
-	{
-		putErrmsg("LSI task is already started.", itoa(vdb->lsiPid));
-		return 1;
-	}
+//	vdb = getLtpVdb();
+//	if (vdb->lsiPid != ERROR && vdb->lsiPid != sm_TaskIdSelf())
+//	{
+//		putErrmsg("LSI task is already started.", itoa(vdb->lsiPid));
+//		return 1;
+//	}
 
 	/*	All command-line arguments are now validated.		*/
 

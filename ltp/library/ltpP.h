@@ -40,6 +40,7 @@ extern "C" {
 #endif
 
 #define LTP_MAX_NBR_OF_CLIENTS	8
+#define LTP_MAX_NBR_OF_LSI 10
 
 #define	MAX_LTP_CLIENT_NBR	(LTP_MAX_NBR_OF_CLIENTS - 1)
 
@@ -583,6 +584,7 @@ typedef struct
 {
 	uvast		ownEngineId;
 	int		lsiPid;		/*	For stopping the LSI.	*/
+	int		lsiPidExtra[LTP_MAX_NBR_OF_LSI];
 	int		clockPid;	/*	For stopping ltpclock.	*/
 	int		watching;	/*	Boolean activity watch.	*/
 	PsmAddress	spans;		/*	SM list: LtpVspan*	*/

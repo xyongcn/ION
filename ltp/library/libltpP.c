@@ -518,6 +518,12 @@ static LtpVdb		*_ltpvdb(char **name)
 		memset((char *) vdb, 0, sizeof(LtpVdb));
 		vdb->ownEngineId = db->ownEngineId;
 		vdb->lsiPid = ERROR;		/*	None yet.	*/
+
+		for (i = 0; i < LTP_MAX_NBR_OF_LSI; i++)
+		{
+			vdb->lsiPidExtra[i]= ERROR;
+		}
+
 		vdb->clockPid = ERROR;		/*	None yet.	*/
 		if ((vdb->spans = sm_list_create(wm)) == 0
 		|| psm_catlg(wm, *name, vdbAddress) < 0)
@@ -744,7 +750,8 @@ int	ltpStart(char *lsiCmd)
 	PsmPartition	ltpwm = getIonwm();
 	LtpVdb		*ltpvdb = _ltpvdb(NULL);
 	PsmAddress	elt;
-
+	int i;
+	
 	if (lsiCmd == NULL)
 	{
 		putErrmsg("LTP can't start: no LSI command.", NULL);
@@ -765,8 +772,15 @@ int	ltpStart(char *lsiCmd)
 	if (ltpvdb->lsiPid == ERROR || sm_TaskExists(ltpvdb->lsiPid) == 0)
 	{
 		ltpvdb->lsiPid = pseudoshell(lsiCmd);
+	} else {
+		for (i = 0; i < LTP_MAX_NBR_OF_LSI; i++)
+		{
+			if (ltpvdb->lsiPidExtra[i] != ERROR || sm_TaskExists(ltpvdb->lsiPidExtra[i]) == 0)
+			{
+				ltpvdb->lsiPidExtra[i] = pseudoshell(lsiCmd);
+			}
+		}
 	}
-
 	/*	Start output link services for remote spans.		*/
 
 	for (elt = sm_list_first(ltpwm, ltpvdb->spans); elt;
@@ -806,6 +820,14 @@ void	ltpStop()		/*	Reverses ltpStart.		*/
 		sm_TaskKill(ltpvdb->lsiPid, SIGTERM);
 	}
 
+	for (i = 0; i < LTP_MAX_NBR_OF_LSI; i++)
+	{
+		if (ltpvdb->lsiPidExtra[i] != ERROR)
+		{
+			sm_TaskKill(ltpvdb->lsiPidExtra[i], SIGTERM);
+		}
+	}
+
 	for (elt = sm_list_first(ltpwm, ltpvdb->spans); elt;
 			elt = sm_list_next(ltpwm, elt))
 	{
@@ -827,6 +849,17 @@ void	ltpStop()		/*	Reverses ltpStart.		*/
 		while (sm_TaskExists(ltpvdb->lsiPid))
 		{
 			microsnooze(100000);
+		}
+	}
+
+	for (i = 0; i < LTP_MAX_NBR_OF_LSI; i++)
+	{
+		if (ltpvdb->lsiPidExtra[i] != ERROR)
+		{
+			while (sm_TaskExists(ltpvdb->lsiPidExtra[i]))
+			{
+				microsnooze(100000);
+			}
 		}
 	}
 
@@ -856,6 +889,10 @@ void	ltpStop()		/*	Reverses ltpStart.		*/
 	}
 
 	ltpvdb->lsiPid = ERROR;
+	for (i = 0; i < LTP_MAX_NBR_OF_LSI; i++)
+	{
+		ltpvdb->lsiPidExtra[i]= ERROR;
+	}
 	for (elt = sm_list_first(ltpwm, ltpvdb->spans); elt;
 			elt = sm_list_next(ltpwm, elt))
 	{
