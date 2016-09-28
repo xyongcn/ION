@@ -772,12 +772,15 @@ int	ltpStart(char *lsiCmd)
 	if (ltpvdb->lsiPid == ERROR || sm_TaskExists(ltpvdb->lsiPid) == 0)
 	{
 		ltpvdb->lsiPid = pseudoshell(lsiCmd);
+		writeMemoNote("[i] ************* lsi1: ", lsiCmd);
 	} else {
 		for (i = 0; i < LTP_MAX_NBR_OF_LSI; i++)
 		{
-			if (ltpvdb->lsiPidExtra[i] != ERROR || sm_TaskExists(ltpvdb->lsiPidExtra[i]) == 0)
+			if (ltpvdb->lsiPidExtra[i] == ERROR || sm_TaskExists(ltpvdb->lsiPidExtra[i]) == 0)
 			{
 				ltpvdb->lsiPidExtra[i] = pseudoshell(lsiCmd);
+				writeMemoNote("[i] ************* lsiExtra: ", lsiCmd);
+				break;
 			}
 		}
 	}
