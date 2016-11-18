@@ -54,20 +54,20 @@ int	main(int argc, char **argv)
 {
 	char		*ownEid = (argc > 1 ? argv[1] : NULL);
 #endif
-	static char	*deliveryTypes[] =	{
-				"Payload delivered.",
-				"Reception timed out.",
-				"Reception interrupted.",
-				"Endpoint stopped."
-						};
+//	static char	*deliveryTypes[] =	{
+//				"Payload delivered.",
+//				"Reception timed out.",
+//				"Reception interrupted.",
+//				"Endpoint stopped."
+//						};
 	BptestState	state = { NULL, 1 };
 	Sdr		sdr;
 	BpDelivery	dlv;
 	int		contentLength;
 	ZcoReader	reader;
 	int		len;
-	char		content[80];
-	char		line[84];
+	char		content[280];
+	char		line[284];
 
 #ifndef mingw
 	setlinebuf(stdout);
@@ -102,7 +102,7 @@ int	main(int argc, char **argv)
 			continue;
 		}
 
-		PUTMEMO("ION event", deliveryTypes[dlv.result - 1]);
+//		PUTMEMO("ION event", deliveryTypes[dlv.result - 1]);
 		if (dlv.result == BpReceptionInterrupted)
 		{
 			continue;
@@ -119,9 +119,9 @@ int	main(int argc, char **argv)
 			CHKZERO(sdr_begin_xn(sdr));
 			contentLength = zco_source_data_length(sdr, dlv.adu);
 			sdr_exit_xn(sdr);
-			isprintf(line, sizeof line, "\tpayload length is %d.",
-					contentLength);
-			PUTS(line);
+//			isprintf(line, sizeof line, "%d",
+//					contentLength);
+//			PUTS(line);
 			if (contentLength < sizeof content)
 			{
 				zco_start_receiving(dlv.adu, &reader);
@@ -137,8 +137,11 @@ int	main(int argc, char **argv)
 				}
 
 				content[contentLength] = '\0';
-				isprintf(line, sizeof line, "\t'%s'", content);
+				isprintf(line, sizeof line, "%s", content);
 				PUTS(line);
+				
+				bp_release_delivery(&dlv, 1);
+				break;
 			}
 		}
 
@@ -147,7 +150,7 @@ int	main(int argc, char **argv)
 
 	bp_close(state.sap);
 	writeErrmsgMemos();
-	PUTS("Stopping bpsink.");
+//	PUTS("Stopping bpsink.");
 	bp_detach();
 	return 0;
 }

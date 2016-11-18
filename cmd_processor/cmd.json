@@ -1,0 +1,9 @@
+{
+	"retrieval": {
+		"file": "xxx.jpg",
+		"saddr": "ipn:1",
+		
+		"daddr": "ipn:1",
+		"recv_port": "2"
+	}
+}
